@@ -1,0 +1,7 @@
+# Ignore specific files
+Python/Benchmarking/SIFTvsSuperPoint_1img(unnötig).py
+Python/Benchmarking/import_tifffile.py
+
+# Or ignore entire folders or patterns if needed
+*.log
+__pycache__/
