@@ -24,7 +24,7 @@ def setup_paths():
     project_root = script_dir.parent.parent.parent
 
     # Define all paths relative to project root
-    images_dir = project_root / 'data' / 'Visium' / 'DLPFC_Visium' / 'DLPFC_Visium_Cropped'   
+    images_dir = project_root / 'data' / 'Visium' / 'DLPFC_Visium' / 'DLPFC_Visium_Cropped' 
     repos_dir = project_root.parent.parent / '10. Sem' / 'Praktikum MDC' / 'git'
     results_dir = project_root / 'Results' / 'Python' / 'SIFTvsSuperPoint_adjacent'  
 
