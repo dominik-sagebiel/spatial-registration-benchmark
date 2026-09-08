@@ -4,11 +4,6 @@ Benchmarking SIFT vs. SuperPoint for image registration of spatial omics /
 pathology images (DAPI, H&E), as part of a Bachelor's thesis on scalable
 spatial omics data integration.
 
-> Naming note: this repo will likely grow a C++/libtorch reimplementation
-> and an R (Rcpp) wrapper package in later phases. Renaming the repo later
-> is safe and doesn't affect history — GitHub also redirects the old name
-> for a while after a rename.
-
 ## What this benchmarks
 
 Given two grayscale images, each script:
