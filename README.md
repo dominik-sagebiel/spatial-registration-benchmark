@@ -11,8 +11,7 @@ Given two grayscale images, each script:
 2. Matches descriptors with **FLANN** (Lowe's ratio test)
 3. Filters matches with **RANSAC** (homography-based)
 4. Estimates an **affine transform** from the RANSAC inliers
-5. Produces keypoint/match visualizations and a **flicker GIF** (image 1
-   static, image 2 warped + alpha-blended, alternating) for visually
+5. Produces keypoint/match visualizations and a **flicker GIF** for visually
    judging registration quality
 6. Writes a `comparison_summary.txt` + `results.npz` per run
 
