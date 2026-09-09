@@ -109,11 +109,14 @@ IMAGE2_NAME = 'lungTMA_1.jpg'   # e.g. "sample_B.tif"
 NEGATE_IMG1 = True
 NEGATE_IMG2 = False
 
-# Rotate an image 90 degrees clockwise before feature detection. Useful when
-# the DAPI scan and H&E image were captured in different orientations and
-# need to be roughly aligned before SIFT/SuperPoint even see them.
-ROTATE_IMG1_90CW = True
-ROTATE_IMG2_90CW = False
+# Rotate an image clockwise by an arbitrary angle (degrees) before feature
+# detection. Useful when the DAPI scan and H&E image were captured in
+# different orientations and need to be roughly aligned before SIFT/
+# SuperPoint even see them. Canvas expands so nothing gets cropped.
+ROTATE_IMG1 = True
+ROTATE_ANGLE_IMG1 = 90
+ROTATE_IMG2 = False
+ROTATE_ANGLE_IMG2 = 0
 
 # Boost brightness before feature detection (e.g. weak/low-contrast DAPI
 # signal). Applied to the RAW image, before negation, since it's meant to
@@ -127,9 +130,26 @@ ENHANCE_FACTOR = 3   # >1 brightens, <1 darkens, 1 = no change
 # under uneven illumination. Applied to the actual detection input, not
 # just for display.
 CLAHE_IMG1 = False
-CLAHE_IMG2 = True
+CLAHE_IMG2 = False
 CLAHE_CLIP_LIMIT = 1.5
 CLAHE_TILE_GRID_SIZE = (16, 16)
+
+# Optional: downscale an image by a factor before detection - e.g. to
+# bring two images with different physical pixel sizes/resolutions to a
+# matching scale before matching. Must be 0 < factor <= 1.0 (upscaling is
+# not supported - see rescale_image() for why). A Gaussian anti-aliasing
+# filter is applied automatically before subsampling.
+RESCALE_IMG1 = False
+RESCALE_FACTOR_IMG1 = 1.0
+RESCALE_IMG2 = False
+RESCALE_FACTOR_IMG2 = 1.0
+
+# Optional: flip/mirror an image before detection.
+# FLIP_CODE: 1 = horizontal mirror (left-right, the usual "mirror"),
+#            0 = vertical flip (upside-down), -1 = both.
+FLIP_IMG1 = False
+FLIP_IMG2 = False
+FLIP_CODE = 1
 
 # --- Visualization-only settings (do NOT affect feature detection/matching) ---
 VIS_MAX_DIM = 1920      # cap the longer side of saved keypoint/match images (px)
@@ -178,12 +198,72 @@ def negate_image(image):
     """
     return cv2.bitwise_not(image)
 
-def rotate_image_90cw(image):
+def rotate_image_cw(image, angle_deg):
     """
-    Rotate an image 90 degrees clockwise (e.g. to bring a DAPI scan into
-    the same orientation as its matching H&E image before detection).
+    Rotate an image clockwise by an arbitrary angle (degrees), expanding
+    the canvas so nothing gets cropped (new background is filled black).
+    A no-op if angle_deg is 0.
     """
-    return cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+    if angle_deg == 0:
+        return image
+
+    h, w = image.shape[:2]
+    center = (w / 2, h / 2)
+
+    # cv2.getRotationMatrix2D treats positive angles as counter-clockwise,
+    # so negate to make this function's angle_deg mean "clockwise" as named.
+    M = cv2.getRotationMatrix2D(center, -angle_deg, 1.0)
+
+    cos = abs(M[0, 0])
+    sin = abs(M[0, 1])
+    new_w = int(h * sin + w * cos)
+    new_h = int(h * cos + w * sin)
+
+    M[0, 2] += (new_w / 2) - center[0]
+    M[1, 2] += (new_h / 2) - center[1]
+
+    return cv2.warpAffine(image, M, (new_w, new_h))
+
+def rescale_image(image, factor):
+    """
+    Downscale an image by a factor (e.g. to bring two images with
+    different physical pixel sizes to a matching scale before detection).
+
+    Upscaling is NOT supported (factor must be <= 1.0): a higher-resolution
+    image can't be reconstructed from a lower-resolution one, so an upscale
+    would only interpolate/invent detail that was never actually captured -
+    risking spurious keypoints on fabricated structure. Only downscaling,
+    which discards real information but doesn't invent any, is offered.
+
+    Before subsampling, applies a Gaussian blur to band-limit high spatial
+    frequencies (anti-aliasing) - without this, fine detail (dense nuclei,
+    thin structures) can fold back into false-looking patterns/moire
+    artifacts once the sampling rate drops below what's needed to represent
+    them (Nyquist). Blur strength scales with how aggressively the image is
+    being shrunk.
+    """
+    if factor == 1.0:
+        return image
+    if factor > 1.0:
+        raise ValueError(
+            f"Upscaling is not supported (factor={factor} > 1.0). "
+            f"Only downscaling (0 < factor < 1.0) is allowed."
+        )
+    if factor <= 0.0:
+        raise ValueError(f"factor must be > 0 (got {factor})")
+
+    sigma = (1.0 / factor - 1.0) / 2.0
+    ksize = max(3, int(2 * round(3 * sigma) + 1))
+    blurred = cv2.GaussianBlur(image, (ksize, ksize), sigmaX=sigma)
+
+    return cv2.resize(blurred, None, fx=factor, fy=factor, interpolation=cv2.INTER_AREA)
+
+def flip_image(image, flip_code=1):
+    """
+    Flip/mirror an image. flip_code: 1 = horizontal (left-right, the usual
+    "mirror"), 0 = vertical (upside-down), -1 = both.
+    """
+    return cv2.flip(image, flip_code)
 
 def enhance_image(image, factor=3):
     """
@@ -191,7 +271,7 @@ def enhance_image(image, factor=3):
 
     ImageEnhance.Brightness works on a PIL Image, not a numpy array, so this
     wraps the conversion both ways to stay a drop-in numpy-in/numpy-out step
-    alongside negate_image() / rotate_image_90cw().
+    alongside negate_image() / rotate_image_cw().
     """
     pil_img = Image.fromarray(image)
     enhanced = ImageEnhance.Brightness(pil_img).enhance(factor)
@@ -222,10 +302,14 @@ def resize_for_superpoint(image, max_pixels=4000000, stride=8):
         stride: Required stride for SuperPoint (default 8)
 
     Returns:
-        Resized image with dimensions multiple of stride
+        (resized_image, was_downscaled, original_size, final_size)
+        - was_downscaled: True only if an actual resolution reduction
+          happened (not just the minor stride-alignment crop below)
+        - original_size / final_size: (width, height) tuples
     """
     h, w = image.shape[:2]
     total_pixels = h * w
+    original_size = (w, h)
 
     if total_pixels <= max_pixels:
         # Still need to ensure dimensions are multiples of stride
@@ -239,7 +323,8 @@ def resize_for_superpoint(image, max_pixels=4000000, stride=8):
             image = image[offset_y:offset_y + new_h, offset_x:offset_x + new_w]
             print(f"   Cropped from {w}x{h} to {new_w}x{new_h} (center crop for stride {stride})")
 
-        return image
+        # This is just a stride-alignment crop, not a memory-driven downscale
+        return image, False, original_size, (image.shape[1], image.shape[0])
 
     # Calculate scale factor to reach target pixels
     scale = np.sqrt(max_pixels / total_pixels)
@@ -253,9 +338,18 @@ def resize_for_superpoint(image, max_pixels=4000000, stride=8):
     print(f"   Original: {w}x{h} ({total_pixels/1e6:.1f}MP)")
     print(f"   Resizing to: {new_w}x{new_h} ({new_w*new_h/1e6:.1f}MP)")
 
+    # Gaussian anti-aliasing pre-filter (same approach as rescale_image()):
+    # sigma scales with how aggressively we're downscaling. A box filter
+    # (INTER_AREA alone) has sidelobes in its frequency response and lets
+    # some high-frequency content leak through as aliasing/false structure;
+    # a Gaussian pre-filter cleanly band-limits before subsampling.
+    sigma = (1.0 / scale - 1.0) / 2.0
+    ksize = max(3, int(2 * round(3 * sigma) + 1))
+    image = cv2.GaussianBlur(image, (ksize, ksize), sigmaX=sigma)
+
     image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    return image
+    return image, True, original_size, (new_w, new_h)
 
 # ============================================================================
 # SIFT Feature Extraction
@@ -310,7 +404,9 @@ def extract_superpoint_features(model, image, max_pixels=4000000):
     """
     # Apply memory-safe resizing (4MP default)
     original_h, original_w = image.shape
-    image_resized = resize_for_superpoint(image, max_pixels=max_pixels, stride=8)
+    image_resized, sp_was_downscaled, sp_original_size, sp_final_size = resize_for_superpoint(
+        image, max_pixels=max_pixels, stride=8
+    )
     h, w = image_resized.shape
 
     # Normalize and convert to tensor
@@ -344,7 +440,10 @@ def extract_superpoint_features(model, image, max_pixels=4000000):
         'descriptors': descriptors,
         'scores': scores,
         'num_keypoints': len(keypoints),
-        'time': inference_time
+        'time': inference_time,
+        'was_downscaled': sp_was_downscaled,
+        'sp_original_size': sp_original_size,   # (width, height) fed into SuperPoint
+        'sp_final_size': sp_final_size          # (width, height) actually processed
     }
 
 # ============================================================================
@@ -481,20 +580,57 @@ def _scaled_marker_params(w, h):
     font_thickness = max(2, int(round(font_scale * 2)))
     return radius, circle_thickness, line_thickness, font_scale, font_thickness
 
+def _wrap_text_to_width(text, max_width, font_scale, font_thickness):
+    """
+    Greedy word-wrap: splits text into lines that each fit within
+    max_width pixels at the given font size, breaking on spaces.
+    """
+    words = text.split(' ')
+    lines = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip() if current else word
+        (w, _), _ = cv2.getTextSize(candidate, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
+        if w <= max_width or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
 def _draw_label_bar(img, text, font_scale, font_thickness):
-    """Draw a filled black bar with white text across the top of img (in-place-ish, returns img)."""
-    (text_w, text_h), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
-    bar_h = text_h + baseline + int(20 * font_scale)
+    """
+    Draw a filled black bar with white text across the top of img.
+    Text is automatically word-wrapped to as many lines as needed to fit
+    the image width (rather than a fixed line count), and the bar grows
+    to fit however many lines that turns out to be.
+    """
+    margin = 10
+    max_text_width = img.shape[1] - 2 * margin
+    lines = _wrap_text_to_width(text, max_text_width, font_scale, font_thickness)
+
+    (_, text_h), baseline = cv2.getTextSize(lines[0], cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
+    line_spacing = text_h + baseline + int(8 * font_scale)
+    top_pad = int(12 * font_scale)
+    bar_h = top_pad + line_spacing * len(lines)
+
     cv2.rectangle(img, (0, 0), (img.shape[1], bar_h), (0, 0, 0), -1)
-    cv2.putText(img, text, (10, bar_h - baseline - 5), cv2.FONT_HERSHEY_SIMPLEX,
-                font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+
+    y = top_pad + text_h
+    for line in lines:
+        cv2.putText(img, line, (margin, y), cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+        y += line_spacing
+
     return img
 
 def draw_keypoints(image, keypoints, title, save_path, color=(0, 255, 0)):
     """
     Draw detected keypoints on a single image and save at a display-capped
-    resolution (VIS_MAX_DIM). The image passed in already reflects whatever
-    preprocessing (enhance/CLAHE/negate/rotate) was applied before detection.
+    resolution (VIS_MAX_DIM). `title` should already be the complete label
+    to display (e.g. "SIFT - img1 - 20000 keypoints - 5017x3874").
     """
     display_img, scale = resize_for_display(image, max_dim=VIS_MAX_DIM)
 
@@ -506,7 +642,7 @@ def draw_keypoints(image, keypoints, title, save_path, color=(0, 255, 0)):
         x, y = int(round(pt[0] * scale)), int(round(pt[1] * scale))
         cv2.circle(img_color, (x, y), radius, color, circle_thickness)
 
-    _draw_label_bar(img_color, f'{title} - {len(keypoints)} keypoints', font_scale, font_thickness)
+    _draw_label_bar(img_color, title, font_scale, font_thickness)
 
     cv2.imwrite(str(save_path), img_color)
 
@@ -604,12 +740,16 @@ def create_flicker_gif(img1, img2, A_fwd, save_path, alpha=0.5,
     )
     print(f"   Saved flicker GIF: {save_path}")
 
-def describe_preprocessing(enhance_flag, clahe_flag, negate_flag, rotate_flag,
-                            enhance_factor, clahe_clip_limit):
+def describe_preprocessing(enhance_flag, clahe_flag, negate_flag, rescale_flag,
+                            rotate_flag, flip_flag, enhance_factor, clahe_clip_limit,
+                            rescale_sizes, rotate_angle):
     """
     Build a human-readable string of which preprocessing steps were applied
     to an image (and in what order they actually ran: enhance -> CLAHE ->
-    negate -> rotate), for logging in the summary file.
+    negate -> rescale -> rotate -> flip), for logging in the summary file.
+
+    rescale_sizes: (original_wh, new_wh) tuple of (width, height) pairs,
+    used only if rescale_flag is True.
     """
     steps = []
     if enhance_flag:
@@ -618,11 +758,29 @@ def describe_preprocessing(enhance_flag, clahe_flag, negate_flag, rotate_flag,
         steps.append(f"CLAHE contrast enhanced (clip_limit={clahe_clip_limit})")
     if negate_flag:
         steps.append("negated (inverted intensities)")
+    if rescale_flag:
+        (ow, oh), (nw, nh) = rescale_sizes
+        steps.append(f"rescaled (original resolution {ow}x{oh}, downscaled to {nw}x{nh})")
     if rotate_flag:
-        steps.append("rotated 90° clockwise")
+        steps.append(f"rotated {rotate_angle}° clockwise")
+    if flip_flag:
+        steps.append("flipped (mirrored)")
     if not steps:
         return "none"
     return " -> ".join(steps)
+
+def describe_superpoint_downscale(sp_result):
+    """
+    Human-readable record of whether SuperPoint's memory-safe resizing
+    actually downscaled this image (vs. processing it at full/near-full
+    resolution), for the summary file.
+    """
+    ow, oh = sp_result['sp_original_size']
+    if sp_result['was_downscaled']:
+        nw, nh = sp_result['sp_final_size']
+        return f"downscaled for SuperPoint: {ow}x{oh} -> {nw}x{nh}"
+    else:
+        return f"not downscaled for SuperPoint (processed at {ow}x{oh})"
 
 # ============================================================================
 # Main Function
@@ -638,7 +796,7 @@ def main():
     print("=" * 70)
  
     # Create output directory - tag it if any rotation preprocessing is applied
-    output_suffix = "_DAPIrotated" if (ROTATE_IMG1_90CW or ROTATE_IMG2_90CW) else ""
+    output_suffix = "_DAPIrotated" if (ROTATE_IMG1 or ROTATE_IMG2) else ""
     output_dir = create_output_dir(suffix=output_suffix)
  
     # Load both images
@@ -680,24 +838,46 @@ def main():
         img2 = negate_image(img2)
         print("[1] Negated image 2 (inverted intensities)")
 
-    # Rotate 90 degrees clockwise where configured (e.g. to bring DAPI into
-    # the same orientation as its matching H&E image)
-    if ROTATE_IMG1_90CW:
-        img1 = rotate_image_90cw(img1)
-        print(f"[1] Rotated image 1 90° clockwise -> new shape: {img1.shape}")
-    if ROTATE_IMG2_90CW:
-        img2 = rotate_image_90cw(img2)
-        print(f"[1] Rotated image 2 90° clockwise -> new shape: {img2.shape}")
+    # Rescale to matching resolution where configured
+    rescale_sizes_1 = None
+    if RESCALE_IMG1:
+        orig_wh_1 = (img1.shape[1], img1.shape[0])
+        img1 = rescale_image(img1, RESCALE_FACTOR_IMG1)
+        rescale_sizes_1 = (orig_wh_1, (img1.shape[1], img1.shape[0]))
+        print(f"[1] Rescaled image 1: {orig_wh_1[0]}x{orig_wh_1[1]} -> {img1.shape[1]}x{img1.shape[0]}")
+    rescale_sizes_2 = None
+    if RESCALE_IMG2:
+        orig_wh_2 = (img2.shape[1], img2.shape[0])
+        img2 = rescale_image(img2, RESCALE_FACTOR_IMG2)
+        rescale_sizes_2 = (orig_wh_2, (img2.shape[1], img2.shape[0]))
+        print(f"[1] Rescaled image 2: {orig_wh_2[0]}x{orig_wh_2[1]} -> {img2.shape[1]}x{img2.shape[0]}")
+
+    # Rotate clockwise where configured (e.g. to bring DAPI into the same
+    # orientation as its matching H&E image)
+    if ROTATE_IMG1:
+        img1 = rotate_image_cw(img1, ROTATE_ANGLE_IMG1)
+        print(f"[1] Rotated image 1 {ROTATE_ANGLE_IMG1}° clockwise -> new shape: {img1.shape}")
+    if ROTATE_IMG2:
+        img2 = rotate_image_cw(img2, ROTATE_ANGLE_IMG2)
+        print(f"[1] Rotated image 2 {ROTATE_ANGLE_IMG2}° clockwise -> new shape: {img2.shape}")
+
+    # Flip/mirror where configured
+    if FLIP_IMG1:
+        img1 = flip_image(img1, flip_code=FLIP_CODE)
+        print(f"[1] Flipped image 1 (flip_code={FLIP_CODE})")
+    if FLIP_IMG2:
+        img2 = flip_image(img2, flip_code=FLIP_CODE)
+        print(f"[1] Flipped image 2 (flip_code={FLIP_CODE})")
 
     # Human-readable record of what was actually done to each image, for
     # the summary file
     img1_preprocessing = describe_preprocessing(
-        ENHANCE_IMG1, CLAHE_IMG1, NEGATE_IMG1, ROTATE_IMG1_90CW,
-        ENHANCE_FACTOR, CLAHE_CLIP_LIMIT
+        ENHANCE_IMG1, CLAHE_IMG1, NEGATE_IMG1, RESCALE_IMG1, ROTATE_IMG1, FLIP_IMG1,
+        ENHANCE_FACTOR, CLAHE_CLIP_LIMIT, rescale_sizes_1, ROTATE_ANGLE_IMG1
     )
     img2_preprocessing = describe_preprocessing(
-        ENHANCE_IMG2, CLAHE_IMG2, NEGATE_IMG2, ROTATE_IMG2_90CW,
-        ENHANCE_FACTOR, CLAHE_CLIP_LIMIT
+        ENHANCE_IMG2, CLAHE_IMG2, NEGATE_IMG2, RESCALE_IMG2, ROTATE_IMG2, FLIP_IMG2,
+        ENHANCE_FACTOR, CLAHE_CLIP_LIMIT, rescale_sizes_2, ROTATE_ANGLE_IMG2
     )
  
     # ========================================================================
@@ -708,8 +888,8 @@ def main():
     print("=" * 70)
  
     print("\n[2a] Extracting SIFT features...")
-    sift_1 = extract_sift_features(img1, max_keypoints=5000)
-    sift_2 = extract_sift_features(img2, max_keypoints=5000)
+    sift_1 = extract_sift_features(img1, max_keypoints=20000)
+    sift_2 = extract_sift_features(img2, max_keypoints=20000)
  
     print("\n[2b] FLANN matching...")
     flann = get_flann_matcher()
@@ -737,8 +917,8 @@ def main():
  
     print("\n[3b] Extracting SuperPoint features...")
     # Set max_pixels to 4_000_000 (4MP) or 8_000_000 (8MP)
-    sp_1 = extract_superpoint_features(sp_model, img1, max_pixels=4000000)
-    sp_2 = extract_superpoint_features(sp_model, img2, max_pixels=4000000)
+    sp_1 = extract_superpoint_features(sp_model, img1, max_pixels=30000000)
+    sp_2 = extract_superpoint_features(sp_model, img2, max_pixels=30000000)
  
     print("\n[3c] FLANN matching...")
     sp_matches = match_features_flann(sp_1['descriptors'], sp_2['descriptors'], flann)
@@ -774,10 +954,26 @@ def main():
     print("\n[4] Generating visualizations...")
  
     # Keypoint visualizations (one per image, per method)
-    draw_keypoints(img1, sift_1['keypoints'], 'SIFT - Image 1', output_dir / "sift_keypoints_img1.png")
-    draw_keypoints(img2, sift_2['keypoints'], 'SIFT - Image 2', output_dir / "sift_keypoints_img2.png")
-    draw_keypoints(img1, sp_1['keypoints'], 'SuperPoint - Image 1', output_dir / "superpoint_keypoints_img1.png")
-    draw_keypoints(img2, sp_2['keypoints'], 'SuperPoint - Image 2', output_dir / "superpoint_keypoints_img2.png")
+    draw_keypoints(
+        img1, sift_1['keypoints'],
+        f"SIFT - img1 - {sift_1['num_keypoints']} keypoints - {img1.shape[1]}x{img1.shape[0]}",
+        output_dir / "sift_keypoints_img1.png"
+    )
+    draw_keypoints(
+        img2, sift_2['keypoints'],
+        f"SIFT - img2 - {sift_2['num_keypoints']} keypoints - {img2.shape[1]}x{img2.shape[0]}",
+        output_dir / "sift_keypoints_img2.png"
+    )
+    draw_keypoints(
+        img1, sp_1['keypoints'],
+        f"SuperPoint - img1 - {sp_1['num_keypoints']} keypoints - {sp_1['sp_final_size'][0]}x{sp_1['sp_final_size'][1]}",
+        output_dir / "superpoint_keypoints_img1.png"
+    )
+    draw_keypoints(
+        img2, sp_2['keypoints'],
+        f"SuperPoint - img2 - {sp_2['num_keypoints']} keypoints - {sp_2['sp_final_size'][0]}x{sp_2['sp_final_size'][1]}",
+        output_dir / "superpoint_keypoints_img2.png"
+    )
  
     # Match visualizations (green = RANSAC inlier, red = outlier)
     draw_matches(
@@ -847,6 +1043,10 @@ def main():
  
         f.write("SUPERPOINT RESULTS\n")
         f.write("-" * 40 + "\n")
+        f.write(f"Input to SuperPoint (image 1): {describe_superpoint_downscale(sp_1)}\n")
+        f.write(f"Img1 inference time: {sp_1['time']:.3f} s\n")
+        f.write(f"Input to SuperPoint (image 2): {describe_superpoint_downscale(sp_2)}\n")
+        f.write(f"Img2 inference time: {sp_2['time']:.3f} s\n")
         f.write(f"Keypoints (image 1): {sp_1['num_keypoints']}\n")
         f.write(f"Keypoints (image 2): {sp_2['num_keypoints']}\n")
         f.write(f"FLANN matches: {len(sp_matches)}\n")

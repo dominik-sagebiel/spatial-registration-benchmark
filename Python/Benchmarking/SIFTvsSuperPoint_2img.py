@@ -145,10 +145,14 @@ def resize_for_superpoint(image, max_pixels=400000000000, stride=8):
         stride: Required stride for SuperPoint (default 8)
 
     Returns:
-        Resized image with dimensions multiple of stride
+        (resized_image, was_downscaled, original_size, final_size)
+        - was_downscaled: True only if an actual resolution reduction
+          happened (not just the minor stride-alignment crop below)
+        - original_size / final_size: (width, height) tuples
     """
     h, w = image.shape[:2]
     total_pixels = h * w
+    original_size = (w, h)
 
     if total_pixels <= max_pixels:
         # Still need to ensure dimensions are multiples of stride
@@ -162,7 +166,8 @@ def resize_for_superpoint(image, max_pixels=400000000000, stride=8):
             image = image[offset_y:offset_y + new_h, offset_x:offset_x + new_w]
             print(f"   Cropped from {w}x{h} to {new_w}x{new_h} (center crop for stride {stride})")
 
-        return image
+        # This is just a stride-alignment crop, not a memory-driven downscale
+        return image, False, original_size, (image.shape[1], image.shape[0])
 
     # Calculate scale factor to reach target pixels
     scale = np.sqrt(max_pixels / total_pixels)
@@ -176,9 +181,18 @@ def resize_for_superpoint(image, max_pixels=400000000000, stride=8):
     print(f"   Original: {w}x{h} ({total_pixels/1e6:.1f}MP)")
     print(f"   Resizing to: {new_w}x{new_h} ({new_w*new_h/1e6:.1f}MP)")
 
+    # Gaussian anti-aliasing pre-filter: sigma scales with how aggressively
+    # we're downscaling. A box filter (INTER_AREA alone) has sidelobes in
+    # its frequency response and lets some high-frequency content leak
+    # through as aliasing/false structure; a Gaussian pre-filter cleanly
+    # band-limits before subsampling.
+    sigma = (1.0 / scale - 1.0) / 2.0
+    ksize = max(3, int(2 * round(3 * sigma) + 1))
+    image = cv2.GaussianBlur(image, (ksize, ksize), sigmaX=sigma)
+
     image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    return image
+    return image, True, original_size, (new_w, new_h)
 
 # ============================================================================
 # SIFT Feature Extraction
@@ -233,7 +247,9 @@ def extract_superpoint_features(model, image, max_pixels=4000000):
     """
     # Apply memory-safe resizing (4MP default)
     original_h, original_w = image.shape
-    image_resized = resize_for_superpoint(image, max_pixels=max_pixels, stride=8)
+    image_resized, sp_was_downscaled, sp_original_size, sp_final_size = resize_for_superpoint(
+        image, max_pixels=max_pixels, stride=8
+    )
     h, w = image_resized.shape
 
     # Normalize and convert to tensor
@@ -267,7 +283,10 @@ def extract_superpoint_features(model, image, max_pixels=4000000):
         'descriptors': descriptors,
         'scores': scores,
         'num_keypoints': len(keypoints),
-        'time': inference_time
+        'time': inference_time,
+        'was_downscaled': sp_was_downscaled,
+        'sp_original_size': sp_original_size,   # (width, height) fed into SuperPoint
+        'sp_final_size': sp_final_size          # (width, height) actually processed
     }
 
 # ============================================================================
@@ -376,7 +395,9 @@ def create_output_dir():
 
 def draw_keypoints(image, keypoints, title, save_path, color=(0, 255, 0)):
     """
-    Draw detected keypoints on a single image.
+    Draw detected keypoints on a single image. `title` should already be
+    the complete label to display (e.g. "SIFT - img1 - 20000 keypoints -
+    5017x3874").
     """
     img_color = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     for pt in keypoints:
@@ -384,7 +405,7 @@ def draw_keypoints(image, keypoints, title, save_path, color=(0, 255, 0)):
 
     plt.figure(figsize=(10, 9))
     plt.imshow(cv2.cvtColor(img_color, cv2.COLOR_BGR2RGB))
-    plt.title(f'{title} - {len(keypoints)} keypoints')
+    plt.title(title)
     plt.axis('off')
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
@@ -511,8 +532,8 @@ def main():
     print("=" * 70)
  
     print("\n[2a] Extracting SIFT features...")
-    sift_1 = extract_sift_features(img1, max_keypoints=5000)
-    sift_2 = extract_sift_features(img2, max_keypoints=5000)
+    sift_1 = extract_sift_features(img1, max_keypoints=20000)
+    sift_2 = extract_sift_features(img2, max_keypoints=20000)
  
     print("\n[2b] FLANN matching...")
     flann = get_flann_matcher()
@@ -540,8 +561,8 @@ def main():
  
     print("\n[3b] Extracting SuperPoint features...")
     # Set max_pixels to 4_000_000 (4MP) or 8_000_000 (8MP)
-    sp_1 = extract_superpoint_features(sp_model, img1, max_pixels=4000000)
-    sp_2 = extract_superpoint_features(sp_model, img2, max_pixels=4000000)
+    sp_1 = extract_superpoint_features(sp_model, img1, max_pixels=30000000)
+    sp_2 = extract_superpoint_features(sp_model, img2, max_pixels=30000000)
  
     print("\n[3c] FLANN matching...")
     sp_matches = match_features_flann(sp_1['descriptors'], sp_2['descriptors'], flann)
@@ -577,10 +598,26 @@ def main():
     print("\n[4] Generating visualizations...")
  
     # Keypoint visualizations (one per image, per method)
-    draw_keypoints(img1, sift_1['keypoints'], 'SIFT - Image 1', output_dir / "sift_keypoints_img1.png")
-    draw_keypoints(img2, sift_2['keypoints'], 'SIFT - Image 2', output_dir / "sift_keypoints_img2.png")
-    draw_keypoints(img1, sp_1['keypoints'], 'SuperPoint - Image 1', output_dir / "superpoint_keypoints_img1.png")
-    draw_keypoints(img2, sp_2['keypoints'], 'SuperPoint - Image 2', output_dir / "superpoint_keypoints_img2.png")
+    draw_keypoints(
+        img1, sift_1['keypoints'],
+        f"SIFT - img1 - {sift_1['num_keypoints']} keypoints - {img1.shape[1]}x{img1.shape[0]}",
+        output_dir / "sift_keypoints_img1.png"
+    )
+    draw_keypoints(
+        img2, sift_2['keypoints'],
+        f"SIFT - img2 - {sift_2['num_keypoints']} keypoints - {img2.shape[1]}x{img2.shape[0]}",
+        output_dir / "sift_keypoints_img2.png"
+    )
+    draw_keypoints(
+        img1, sp_1['keypoints'],
+        f"SuperPoint - img1 - {sp_1['num_keypoints']} keypoints - {sp_1['sp_final_size'][0]}x{sp_1['sp_final_size'][1]}",
+        output_dir / "superpoint_keypoints_img1.png"
+    )
+    draw_keypoints(
+        img2, sp_2['keypoints'],
+        f"SuperPoint - img2 - {sp_2['num_keypoints']} keypoints - {sp_2['sp_final_size'][0]}x{sp_2['sp_final_size'][1]}",
+        output_dir / "superpoint_keypoints_img2.png"
+    )
  
     # Match visualizations (green = RANSAC inlier, red = outlier)
     draw_matches(
@@ -665,4 +702,3 @@ def main():
  
 if __name__ == "__main__":
     main()
- 
