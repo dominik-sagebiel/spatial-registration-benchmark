@@ -2,6 +2,6 @@
 Python/Benchmarking/SIFTvsSuperPoint_1img(unnötig).py
 Python/Benchmarking/import_tifffile.py
 
-# Or ignore entire folders or patterns if needed
+# Ignore entire folders or patterns
 *.log
 __pycache__/
