@@ -7,3 +7,4 @@ Python/Benchmarking/import_tifffile.py
 __pycache__/
 C++/build/
 C++/TorchScript_Scripting
+C++/third_party
