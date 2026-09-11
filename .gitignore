@@ -5,3 +5,5 @@ Python/Benchmarking/import_tifffile.py
 # Ignore entire folders or patterns
 *.log
 __pycache__/
+C++/build/
+C++/TorchScript_Scripting
