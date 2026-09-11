@@ -34,7 +34,7 @@ def setup_paths():
 
     # Define all paths relative to project root
     # These are the DEFAULT folders each image is looked for in.
-    images_dir1 = project_root / 'data' / 'mIF' / 'LymphNode' / 'same'
+    images_dir1 = project_root / 'data' / 'mIF' / 'LymphNode' / 'adjacent'
     images_dir2 = project_root / 'data' / 'Xenium' / 'LymphNode'
     repos_dir = project_root.parent.parent / '10. Sem' / 'Praktikum MDC' / 'git'
     results_dir = project_root / 'Results' / 'Python' / 'SIFTvsSuperPoint_DAPI_DAPI_ome'
@@ -119,13 +119,19 @@ IMAGE2_LAYER = 0
 
 # Negate an image's intensities (background -> white, nuclei -> black)
 # before feature detection.
+# RANSAC confidence for homography-based match filtering (filter_with_ransac).
+# Lower values let RANSAC settle for a "good enough" fit sooner rather than
+# searching more exhaustively - can rescue genuinely good matches that a
+# stricter search discards. OpenCV's own default is 0.995.
+RANSAC_CONFIDENCE = 0.9
+
 NEGATE_IMG1 = False
 NEGATE_IMG2 = False
 
 # Optional: boost brightness (e.g. when one DAPI scan is dimmer/nuclei-less-
 # visible than the other, such as an adjacent-slide sample vs. a same-slide
 # sample).
-ENHANCE_IMG1 = True
+ENHANCE_IMG1 = False
 ENHANCE_IMG2 = False
 ENHANCE_FACTOR = 2   # >1 brightens, <1 darkens, 1 = no change
 
@@ -135,9 +141,9 @@ ENHANCE_FACTOR = 2   # >1 brightens, <1 darkens, 1 = no change
 # not supported - see rescale_image() for why). A Gaussian anti-aliasing
 # filter is applied automatically before subsampling.
 RESCALE_IMG1 = True
-RESCALE_FACTOR_IMG1 = 0.425
-RESCALE_IMG2 = False
-RESCALE_FACTOR_IMG2 = 1.0
+RESCALE_FACTOR_IMG1 = 0.05
+RESCALE_IMG2 = True
+RESCALE_FACTOR_IMG2 = 0.13
 
 # Optional: rotate an image clockwise by an arbitrary angle (degrees)
 # before detection. Canvas is expanded so nothing gets cropped.
@@ -375,7 +381,7 @@ def describe_superpoint_downscale(sp_result):
     """
     ow, oh = sp_result['sp_original_size']
     if sp_result['was_downscaled']:
-        nw, nh = sp_result['sp_final_size']
+        nw, nh = sp_result['sp_final_size']      
         return f"downscaled for SuperPoint: {ow}x{oh} -> {nw}x{nh} (gaussian filter)"
     else:
         return f"not downscaled for SuperPoint (processed at {ow}x{oh})"
@@ -585,9 +591,16 @@ def match_features_flann(desc1, desc2, flann_matcher, lowes_ratio=0.8, k=2):
 # ============================================================================
 # RANSAC Filtering
 # ============================================================================
-def filter_with_ransac(matches, kp1, kp2, ransac_thresh=5.0):
+def filter_with_ransac(matches, kp1, kp2, ransac_thresh=5.0, confidence=0.995):
     """
-    Filter matches using RANSAC to find geometrically consistent ones
+    Filter matches using RANSAC to find geometrically consistent ones.
+
+    confidence: RANSAC's target certainty (0-1) that it has found a correct
+    model, which controls how many iterations it runs before settling on a
+    homography. Lower values (e.g. 0.95) let RANSAC stop sooner with a
+    "good enough" fit rather than searching more exhaustively - this can
+    change which matches end up classified as inliers vs outliers.
+    OpenCV's own default is 0.995.
     """
     if len(matches) < 4:
         print(f"   RANSAC: Need at least 4 matches, have {len(matches)}")
@@ -596,7 +609,7 @@ def filter_with_ransac(matches, kp1, kp2, ransac_thresh=5.0):
     src_pts = np.float32([kp1[m.queryIdx] for m in matches]).reshape(-1, 2)
     dst_pts = np.float32([kp2[m.trainIdx] for m in matches]).reshape(-1, 2)
 
-    H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, ransac_thresh)
+    H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, ransac_thresh, confidence=confidence)
 
     if H is not None:
         inliers = [matches[i] for i in range(len(matches)) if mask[i]]
@@ -944,7 +957,7 @@ def main():
 
     print("\n[2c] RANSAC filtering...")
     sift_inliers, sift_H, sift_mask = filter_with_ransac(
-        sift_matches, sift_1['keypoints'], sift_2['keypoints'], ransac_thresh=5.0
+        sift_matches, sift_1['keypoints'], sift_2['keypoints'], ransac_thresh=5.0, confidence=RANSAC_CONFIDENCE
     )
 
     print("\n[2d] Estimating affine transform from inlier matches...")
@@ -972,7 +985,7 @@ def main():
 
     print("\n[3d] RANSAC filtering...")
     sp_inliers, sp_H, sp_mask = filter_with_ransac(
-        sp_matches, sp_1['keypoints'], sp_2['keypoints'], ransac_thresh=5.0
+        sp_matches, sp_1['keypoints'], sp_2['keypoints'], ransac_thresh=5.0, confidence=RANSAC_CONFIDENCE
     )
 
     print("\n[3e] Estimating affine transform from inlier matches...")
@@ -1035,7 +1048,7 @@ def main():
         img1, img2,
         sp_1['keypoints'], sp_2['keypoints'],
         sp_matches, sp_inliers,
-        f"SuperPoint (img1: {describe_superpoint_downscale(sp_1)} | img2: {describe_superpoint_downscale(sp_2)})",
+        f"SuperPoint (img1 processed at: {sp_1['sp_final_size']} | (img2 processed at: {sp_2['sp_final_size']})",
         output_dir / "superpoint_matches.png"
     )
 
