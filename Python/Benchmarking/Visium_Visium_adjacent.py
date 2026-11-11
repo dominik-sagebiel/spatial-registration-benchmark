@@ -510,7 +510,7 @@ def extract_superpoint_features(model, image, gt_points=None, max_pixels=SUPERPO
     }
 
 # ============================================================================
-# RoMa (dense matching)
+# RoMa 
 # ============================================================================
 def extract_roma_features(img1, img2, num_matches=ROMA_NUM_MATCHES):
     """
