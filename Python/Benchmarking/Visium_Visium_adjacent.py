@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 import torch
 from PIL import Image
+from romatch import roma_outdoor
+
 
 # ============================================================================
 # CONFIG - Image sources (PNG/JPEG only)
@@ -80,7 +82,7 @@ RANSAC_THRESH = 5.0
 RANSAC_CONFIDENCE = 0.95  
 
 # ============================================================================
-# CONFIG - Additional pipelines: ASHLAR-style phase correlation + VALIS
+# CONFIG - Additional pipelines: ASHLAR-style phase correlation + VALIS + RoMa
 # ============================================================================
 RUN_ASHLAR = True
 
@@ -100,6 +102,12 @@ VALIS_FEATURES = "default"
 VALIS_MAX_PROCESSED_DIM = None
 # Let VALIS test mirrored versions of the images (needed for FLIP tests).
 VALIS_CHECK_REFLECTIONS = False
+
+RUN_ROMA = True
+# Matches sampled from RoMa's dense warp (a fixed count, not a quality measure).
+ROMA_NUM_MATCHES = 10000
+# Random subset drawn in roma_matches.png (all matches would hide the image).
+ROMA_VIS_MAX_MATCHES = 500
 
 # ========================================================================
 # CONFIG - Visualization-only
@@ -499,6 +507,46 @@ def extract_superpoint_features(model, image, gt_points=None, max_pixels=SUPERPO
         'was_downscaled': was_downscaled, 'sp_original_size': sp_original_size,
         'sp_final_size': sp_final_size, 'sp_scale': sp_scale,
         'gt_points_preprocessed_frame': gt_points,
+    }
+
+# ============================================================================
+# RoMa (dense matching)
+# ============================================================================
+def extract_roma_features(img1, img2, num_matches=ROMA_NUM_MATCHES):
+    """
+    Runs RoMa on the two preprocessed images and samples point matches.
+    Returns row-aligned keypoints (keypoints1[i] <-> keypoints2[i]) in the
+    preprocessed frame and the matches as cv2.DMatch for RANSAC/drawing.
+    """
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    roma_model = roma_outdoor(device=device)
+
+    # RoMa only takes RGB PIL images 
+    pil1 = Image.fromarray(img1).convert("RGB")
+    pil2 = Image.fromarray(img2).convert("RGB")
+    H_A, W_A = img1.shape[:2]
+    H_B, W_B = img2.shape[:2]
+
+    torch.manual_seed(42)   # sample() draws the matches randomly
+    start_time = time.time()
+    warp, certainty = roma_model.match(pil1, pil2, device=device)
+    matches, _ = roma_model.sample(warp, certainty, num=num_matches)
+    elapsed = time.time() - start_time
+
+    # RoMa returns [-1, 1] coordinates -> pixels of each image
+    kptsA, kptsB = roma_model.to_pixel_coordinates(matches, H_A, W_A, H_B, W_B)
+    kp1 = kptsA.cpu().numpy().astype(np.float64)
+    kp2 = kptsB.cpu().numpy().astype(np.float64)
+    dmatches = [cv2.DMatch(i, i, 0.0) for i in range(len(kp1))]
+
+    print(f"   RoMa matching ({device}): {elapsed:.1f} s")
+    print(f"   Sampled {len(dmatches)} matches")
+
+    return {
+        'keypoints1': kp1, 'keypoints2': kp2, 'matches': dmatches,
+        'num_matches': len(dmatches), 'time': elapsed, 'device': device,
+        'coarse_res': (roma_model.h_resized, roma_model.w_resized),
+        'upsample_res': tuple(roma_model.upsample_res),
     }
 
 
@@ -1047,7 +1095,7 @@ def main():
         raise FileNotFoundError(f"IMG2_SRC not found: {image2_path}")
 
     print("=" * 70)
-    print("SIFT vs SuperPoint vs VALIS vs ASHLAR Registration Comparison")
+    print("SIFT vs SuperPoint vs ASHLAR vs RoMa vs VALIS Registration Comparison")
     print("=" * 70)
     print(f"Image 1: {image1_path.name}")
     print(f"Image 2: {image2_path.name}")
@@ -1244,7 +1292,61 @@ def main():
         print(f"[ASHLAR] Results saved to: {ashlar_output_dir}")
 
     # ========================================================================
-    # VALIS (kept last: it shuts its JVM down when done)
+    # RoMa 
+    # ========================================================================
+    roma = None
+    roma_tre = (None,) * 5
+    if RUN_ROMA:
+        print("\n" + "=" * 70)
+        print("RoMa REGISTRATION")
+        print("=" * 70)
+        roma_output_dir = create_output_dir("RoMa")
+
+        print("\n[5a] RoMa dense matching + sampling...")
+        roma = extract_roma_features(img1, img2)
+        roma_kp1, roma_kp2 = roma['keypoints1'], roma['keypoints2']
+
+        print("\n[5b] RANSAC filtering...")
+        roma_inliers, roma_H, _ = filter_with_ransac(roma['matches'], roma_kp1, roma_kp2)
+
+        print("\n[5c] Estimating affine transform...")
+        roma_A = estimate_affine_transform(roma_inliers, roma_kp1, roma_kp2)
+        roma['A'] = roma_A
+
+        roma_tre = compute_tre(gt1_ids, gt1_points, gt2_ids, gt2_points, roma_A)
+
+        print("\n[5d] Generating visualizations...")
+        rng = np.random.default_rng(42)
+        n_show = min(ROMA_VIS_MAX_MATCHES, roma['num_matches'])
+        shown = set(rng.choice(roma['num_matches'], size=n_show, replace=False).tolist())
+        draw_matches(img1, img2, roma_kp1, roma_kp2,
+                     [m for m in roma['matches'] if m.queryIdx in shown],
+                     [m for m in roma_inliers if m.queryIdx in shown],
+                     f"RoMa ({n_show} of {roma['num_matches']} sampled matches shown)",
+                     roma_output_dir / "roma_matches.png")
+        draw_gt_accuracy(img2, gt1_ids, gt1_points, gt2_ids, gt2_points, roma_A,
+                          'RoMa', roma_output_dir / "roma_gt_accuracy.png")
+        create_flicker_gif(img1, img2, roma_A, roma_output_dir / "roma_flicker.gif")
+
+        np.savez(roma_output_dir / "results.npz", H=roma_H, A=roma_A,
+                 num_matches=roma['num_matches'], num_inliers=len(roma_inliers))
+        save_points_csv(roma_output_dir / "gt1_preprocessed.csv", gt1_ids, gt1_points)
+        save_points_csv(roma_output_dir / "gt2_preprocessed.csv", gt2_ids, gt2_points)
+        write_transform_summary(
+            roma_output_dir, "RoMa", image1_path, image2_path, desc1, desc2, roma_A, roma_tre,
+            extra_lines=["Method: RoMa (roma_outdoor) dense matching on the preprocessed images, "
+                         "sampled matches -> RANSAC homography -> affine (same as SIFT/SuperPoint)",
+                         f"Working resolution: coarse {roma['coarse_res'][1]}x{roma['coarse_res'][0]}, "
+                         f"refined {roma['upsample_res'][1]}x{roma['upsample_res'][0]}",
+                         f"Sampled matches: {roma['num_matches']} (set by ROMA_NUM_MATCHES, "
+                         f"not comparable to FLANN match counts)",
+                         f"RANSAC inliers: {len(roma_inliers)} "
+                         f"({len(roma_inliers)/max(roma['num_matches'],1)*100:.1f}%)",
+                         f"Matching time ({roma['device']}): {roma['time']:.1f} s"])
+        print(f"[RoMa] Results saved to: {roma_output_dir}")
+
+    # ========================================================================
+    # VALIS 
     # ========================================================================
     valis = None
     valis_tre = (None,) * 5
@@ -1254,12 +1356,12 @@ def main():
         print("=" * 70)
         valis_output_dir = create_output_dir("VALIS")
 
-        print("\n[5a] Running VALIS rigid registration...")
+        print("\n[6a] Running VALIS rigid registration...")
         valis = register_valis(img1, img2, valis_output_dir)
 
         valis_tre = compute_tre(gt1_ids, gt1_points, gt2_ids, gt2_points, valis['A'])
 
-        print("\n[5b] Generating visualizations...")
+        print("\n[6b] Generating visualizations...")
         draw_gt_accuracy(img2, gt1_ids, gt1_points, gt2_ids, gt2_points, valis['A'],
                           'VALIS', valis_output_dir / "valis_gt_accuracy.png")
         create_flicker_gif(img1, img2, valis['A'], valis_output_dir / "valis_flicker.gif")
@@ -1301,6 +1403,9 @@ def main():
         print(f"\nASHLAR-style phase correlation: {ashlar['time']:.3f} s, "
               f"error: {ashlar['error']:.4f}, "
               f"mean TRE (px): {ashlar_tre[1] if ashlar_tre[1] is not None else 'n/a'}")
+    if roma is not None:
+        print(f"RoMa: {roma['time']:.1f} s, {len(roma_inliers)}/{roma['num_matches']} inliers, "
+              f"mean TRE (px): {roma_tre[1] if roma_tre[1] is not None else 'n/a'}")
     if valis is not None:
         if valis['error']:
             print(f"VALIS ({VALIS_FEATURES}): FAILED - {valis['error']}")
