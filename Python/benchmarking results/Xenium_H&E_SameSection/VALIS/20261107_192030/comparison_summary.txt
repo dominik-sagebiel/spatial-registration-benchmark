@@ -1,0 +1,21 @@
+======================================================================
+VALIS (default) Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Xenium\Lung\lungTMA_Assay4.tif
+  Preprocessing applied: negated (inverted intensities) -> rescaled (original resolution 6524x6206, downscaled to 2610x2482), gaussian filter applied before -> rotated 90° clockwise
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\H&E\Lung\lungTMA_4.jpg
+  Preprocessing applied: brightness enhanced (factor=1.5) -> rescaled (original resolution 9297x9297, downscaled to 2157x2157), gaussian filter applied before
+
+Features: default, max processed dim: VALIS default, check reflections: False, non-rigid: off
+Registration time: 25.2 s
+Affine fit max residual: 0.000 px
+VALIS error estimates: valis/valis_error_estimates.csv
+
+Affine matrix (img1 -> img2):
+[[  8.52783895e-01  -4.11591012e-06   2.40926708e+01]
+ [  4.11683643e-06   8.52592012e-01  -5.87999834e+01]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+mean=1.168  median=1.110  min=0.128  max=2.690  (n=60)

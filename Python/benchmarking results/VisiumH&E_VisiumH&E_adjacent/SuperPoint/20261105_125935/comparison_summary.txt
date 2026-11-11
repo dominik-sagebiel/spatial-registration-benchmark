@@ -1,0 +1,25 @@
+======================================================================
+SuperPoint Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Visium\DLPFC_Visium\DLPFC_Visium_Cropped\151669.png
+  Preprocessing applied: none
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Visium\DLPFC_Visium\DLPFC_Visium_Cropped\151670.png
+  Preprocessing applied: none
+
+Input to SuperPoint (image 1): not downscaled for SuperPoint (processed at 1353x1419)
+Img1 inference time: 9.619 s
+Input to SuperPoint (image 2): not downscaled for SuperPoint (processed at 1347x1416)
+Img2 inference time: 8.791 s
+
+Keypoints (image 1): 6056
+Keypoints (image 2): 6576
+FLANN matches: 71
+RANSAC inliers: 16 (22.5%)
+Affine matrix (img1 -> img2):
+[[ 9.90881583e-01  3.38989515e-02 -3.56267548e+01]
+ [ 1.80759059e-02  9.65161624e-01  8.90416518e+00]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)

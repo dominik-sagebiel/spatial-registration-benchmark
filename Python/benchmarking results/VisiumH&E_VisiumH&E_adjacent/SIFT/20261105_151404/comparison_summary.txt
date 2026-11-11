@@ -1,0 +1,20 @@
+======================================================================
+SIFT Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Visium\DLPFC_Visium\DLPFC_Visium_Cropped\151671.png
+  Preprocessing applied: none
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Visium\DLPFC_Visium\DLPFC_Visium_Cropped\151672.png
+  Preprocessing applied: none
+
+Keypoints (image 1): 4220
+Keypoints (image 2): 4612
+FLANN matches: 85
+RANSAC inliers: 7 (8.2%)
+Affine matrix (img1 -> img2):
+[[ 8.35131674e-01 -3.29722061e-02  2.54234711e+02]
+ [-5.94698040e-01  2.93978521e-02  1.43227073e+03]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)

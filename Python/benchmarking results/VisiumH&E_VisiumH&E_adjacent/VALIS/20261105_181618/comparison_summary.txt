@@ -1,0 +1,21 @@
+======================================================================
+VALIS (default) Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Visium\DLPFC_Visium\DLPFC_Visium_Cropped\151673.png
+  Preprocessing applied: none
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Visium\DLPFC_Visium\DLPFC_Visium_Cropped\151674.png
+  Preprocessing applied: none
+
+Features: default, max processed dim: VALIS default, check reflections: False, non-rigid: off
+Registration time: 32.9 s
+Affine fit max residual: 0.000 px
+VALIS error estimates: valis/valis_error_estimates.csv
+
+Affine matrix (img1 -> img2):
+[[  9.93065952e-01   1.97634406e-02  -5.42884874e+00]
+ [ -1.97593888e-02   9.92966486e-01   5.14279636e+01]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)

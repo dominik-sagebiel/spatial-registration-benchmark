@@ -1,0 +1,25 @@
+======================================================================
+SuperPoint Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\mIF\LymphNode\adjacent\Core_13.ome.tif
+  Preprocessing applied: brightness enhanced (factor=2) -> rescaled (original resolution 12139x12136, downscaled to 607x607), gaussian filter applied before
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Xenium\LymphNode\Core_13.tiff
+  Preprocessing applied: rescaled (original resolution 5149x4945, downscaled to 669x643), gaussian filter applied before -> rotated 90° clockwise -> flipped (mirrored)
+
+Input to SuperPoint (image 1): not downscaled for SuperPoint (processed at 607x607)
+Img1 inference time: 1.545 s
+Input to SuperPoint (image 2): not downscaled for SuperPoint (processed at 643x669)
+Img2 inference time: 1.835 s
+
+Keypoints (image 1): 451
+Keypoints (image 2): 401
+FLANN matches: 19
+RANSAC inliers: 8 (42.1%)
+Affine matrix (img1 -> img2):
+[[  1.05270786  -0.0524936   27.31227379]
+ [  0.03825324   1.03170279 -33.80275404]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)

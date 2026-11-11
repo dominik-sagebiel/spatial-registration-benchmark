@@ -1,0 +1,23 @@
+======================================================================
+ASHLAR-style phase correlation Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Visium\DLPFC_Visium\DLPFC_Visium_Cropped\151673.png
+  Preprocessing applied: none
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Visium\DLPFC_Visium\DLPFC_Visium_Cropped\151674.png
+  Preprocessing applied: none
+
+Method: port of ashlar.utils.register on the two whole images (whitening -> Hann window -> phase_cross_correlation with normalization=None -> quadrant check), translation only
+Adaptations: common downscale to fit the pixel budget, zero-padding to a common shape after whitening
+Working size: 1344x1407 (scale 1.000, max 16000000 px)
+Whitening sigma: 0 (plain Laplacian), upsample factor: 10
+ASHLAR error (-log normalized correlation; 0 = identical, larger = worse): 4.7429
+Registration time: 0.251 s
+
+Affine matrix (img1 -> img2):
+[[   1.            0.         -288.1000061 ]
+ [   0.            1.          -93.80000305]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)

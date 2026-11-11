@@ -1,0 +1,7 @@
+# Ignore specific files
+
+
+# Ignore entire folders or patterns
+*.log
+__pycache__/
+

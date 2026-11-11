@@ -1,0 +1,20 @@
+======================================================================
+SIFT Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\mIF\LymphNode\adjacent\Core_13.ome.tif
+  Preprocessing applied: brightness enhanced (factor=1.5) -> rescaled (original resolution 12139x12136, downscaled to 607x607), gaussian filter applied before
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Xenium\LymphNode\Core_13.tiff
+  Preprocessing applied: rescaled (original resolution 5149x4945, downscaled to 669x643), gaussian filter applied before -> rotated 90° clockwise -> flipped (mirrored)
+
+Keypoints (image 1): 1967
+Keypoints (image 2): 3735
+FLANN matches: 43
+RANSAC inliers: 6 (14.0%)
+Affine matrix (img1 -> img2):
+[[ 7.33982223e-01  3.41809044e-02  6.72789999e+01]
+ [-8.20712259e-01  1.15383494e+00  1.06035255e+02]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)

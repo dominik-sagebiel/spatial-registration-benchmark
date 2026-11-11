@@ -1,0 +1,20 @@
+======================================================================
+SIFT Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Xenium\Lung\lungTMA_Assay5.tif
+  Preprocessing applied: negated (inverted intensities) -> rescaled (original resolution 6458x6298, downscaled to 2583x2519), gaussian filter applied before -> rotated 90° clockwise
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\H&E\Lung\lungTMA_5.jpg
+  Preprocessing applied: brightness enhanced (factor=1.5) -> rescaled (original resolution 9216x9216, downscaled to 2138x2138), gaussian filter applied before
+
+Keypoints (image 1): 14205
+Keypoints (image 2): 12518
+FLANN matches: 536
+RANSAC inliers: 74 (13.8%)
+Affine matrix (img1 -> img2):
+[[ 8.53238611e-01 -8.12088902e-05 -4.90087881e+01]
+ [-4.64426591e-05  8.51749553e-01 -5.92810746e+01]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+mean=1.371  median=1.300  min=0.200  max=4.175  (n=60)

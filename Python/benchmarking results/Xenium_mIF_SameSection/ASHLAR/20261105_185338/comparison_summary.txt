@@ -1,0 +1,23 @@
+======================================================================
+ASHLAR-style phase correlation Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\mIF\LymphNode\same\Core_13.ome.tif
+  Preprocessing applied: none
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Xenium\LymphNode\Core_13.tiff
+  Preprocessing applied: rotated 90° clockwise -> flipped (mirrored)
+
+Method: port of ashlar.utils.register on the two whole images (whitening -> Hann window -> phase_cross_correlation with normalization=None -> quadrant check), translation only
+Adaptations: common downscale to fit the pixel budget, zero-padding to a common shape after whitening
+Working size: 3999x4001 (scale 0.329, max 16000000 px)
+Whitening sigma: 4 (Laplacian-of-Gaussian), upsample factor: 10
+ASHLAR error (-log normalized correlation; 0 = identical, larger = worse): 4.0222
+Registration time: 4.474 s
+
+Affine matrix (img1 -> img2):
+[[ 1.00000000e+00  0.00000000e+00 -3.02844762e+03]
+ [ 0.00000000e+00  1.00000000e+00 -3.11889431e+03]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)
