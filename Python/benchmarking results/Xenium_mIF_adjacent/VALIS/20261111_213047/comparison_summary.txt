@@ -1,0 +1,21 @@
+======================================================================
+VALIS (default) Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\mIF\LymphNode\adjacent\Core_13.ome.tif
+  Preprocessing applied: brightness enhanced (factor=2) -> rescaled (original resolution 12139x12136, downscaled to 607x607), gaussian filter applied before
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Xenium\LymphNode\Core_13.tiff
+  Preprocessing applied: rescaled (original resolution 5149x4945, downscaled to 669x643), gaussian filter applied before -> rotated 90° clockwise -> flipped (mirrored)
+
+Features: default, max processed dim: VALIS default, check reflections: False, non-rigid: off
+Registration time: 43.1 s
+Affine fit max residual: 0.000 px
+VALIS error estimates: valis/valis_error_estimates.csv
+
+Affine matrix (img1 -> img2):
+[[  1.05027063  -0.04459903  28.05602675]
+ [  0.04456772   1.04953332 -37.04075727]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)

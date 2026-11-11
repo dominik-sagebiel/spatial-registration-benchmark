@@ -1,0 +1,22 @@
+======================================================================
+RoMa Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\mIF\LymphNode\adjacent\Core_13.ome.tif
+  Preprocessing applied: brightness enhanced (factor=2) -> rescaled (original resolution 12139x12136, downscaled to 607x607), gaussian filter applied before
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Xenium\LymphNode\Core_13.tiff
+  Preprocessing applied: rescaled (original resolution 5149x4945, downscaled to 669x643), gaussian filter applied before -> rotated 90° clockwise -> flipped (mirrored)
+
+Method: RoMa (roma_outdoor) dense matching on the preprocessed images, sampled matches -> RANSAC homography -> affine (same as SIFT/SuperPoint)
+Working resolution: coarse 560x560, refined 864x864
+Sampled matches: 10000 (set by ROMA_NUM_MATCHES, not comparable to FLANN match counts)
+RANSAC inliers: 7412 (74.1%)
+Matching time (cpu): 182.0 s
+
+Affine matrix (img1 -> img2):
+[[  1.06501508  -0.04122553  21.80361664]
+ [  0.05111694   1.03681385 -35.49094654]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+n/a (no matching GT points or no transform found)

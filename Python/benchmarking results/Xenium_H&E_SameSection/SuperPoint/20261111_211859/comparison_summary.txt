@@ -1,0 +1,25 @@
+======================================================================
+SuperPoint Registration Summary
+======================================================================
+
+Image 1: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\Xenium\Lung\lungTMA_Assay6.tif
+  Preprocessing applied: negated (inverted intensities) -> rescaled (original resolution 5958x6366, downscaled to 2383x2546), gaussian filter applied before -> rotated 90° clockwise
+Image 2: C:\Users\domin\Nextcloud\Uni\FU Ba. BioInf\11. Sem\Bachelorarbeit\data\H&E\Lung\lungTMA_6.jpg
+  Preprocessing applied: brightness enhanced (factor=1.5) -> rescaled (original resolution 9546x9546, downscaled to 2597x2597), gaussian filter applied before
+
+Input to SuperPoint (image 1): not downscaled for SuperPoint (processed at 2546x2383)
+Img1 inference time: 28.664 s
+Input to SuperPoint (image 2): not downscaled for SuperPoint (processed at 2597x2597)
+Img2 inference time: 28.994 s
+
+Keypoints (image 1): 20000
+Keypoints (image 2): 20000
+FLANN matches: 468
+RANSAC inliers: 365 (78.0%)
+Affine matrix (img1 -> img2):
+[[ 1.00005680e+00 -3.72541198e-05  5.21201440e+01]
+ [-1.43786810e-04  9.99070342e-01  1.36086012e+02]]
+
+GROUND-TRUTH TARGET REGISTRATION ERROR (TRE, pixels)
+----------------------------------------
+mean=1.416  median=1.433  min=0.397  max=2.676  (n=60)
